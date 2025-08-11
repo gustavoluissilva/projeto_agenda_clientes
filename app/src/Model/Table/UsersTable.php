@@ -73,12 +73,7 @@ class UsersTable extends Table
             ->maxLength('phone', 20)
             ->requirePresence('phone', 'create')
             ->notEmptyString('phone');
-
-        $validator
-            ->scalar('user_type')
-            ->requirePresence('user_type', 'create')
-            ->notEmptyString('user_type');
-
+            
         $validator
             ->dateTime('date_register')
             ->requirePresence('date_register', 'create')

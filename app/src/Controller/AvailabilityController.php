@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Controller;
@@ -6,109 +7,99 @@ namespace App\Controller;
 /**
  * Availability Controller
  *
+ * Gerencia os horários de trabalho e bloqueios.
+ * Apenas usuários 'admin' podem acessar.
  */
 class AvailabilityController extends AppController
 {
     /**
-     * Index method
-     *
-     * @return \Cake\Http\Response|null|void Renders view
+     * O método initialize é chamado antes de tudo no controller.
+     * Vamos usá-lo para garantir que o componente de Autorização seja carregado.
+     */
+    public function initialize(): void
+    {
+        parent::initialize();
+        $this->loadComponent('Authorization.Authorization');
+    }
+
+    /**
+     * beforeFilter é executado após o initialize, mas antes de cada action.
+     * Usamos para a verificação de segurança.
+     */
+    public function beforeFilter(\Cake\Event\EventInterface $event)
+    {
+        parent::beforeFilter($event);
+
+        $user = $this->Authentication->getIdentity();
+
+        // Passamos a entidade User original em vez do objeto Identity
+        $this->Authorization->authorize($user->getOriginalData(), 'admin');
+    }
+
+    /**
+     * Action Index: Mostra um resumo dos horários e bloqueios.
      */
     public function index()
     {
-        $query = $this->Availability->find();
-        $availability = $this->paginate($query);
-
-        $this->set(compact('availability'));
-
-        // Carrega as tabelas que vamos usar
-        $availableTable = $this->fetchTable('Available');
-        $exceptionsTable = $this->fetchTable('Exceptions');
-
-        // Busca todas as regras de horário de trabalho padrão
-        $availableRules = $availableTable->find('all')->all();
-
-        // Busca todos os bloqueios que ainda não terminaram
-        $exceptions = $exceptionsTable->find()
-            ->where(['end_exception >=' => date('Y-m-d H:i:s')])
+        $availableRules = $this->fetchTable('Available')->find('all')->all();
+        $exceptions = $this->fetchTable('Exceptions')->find()
+            ->where(['end_exception >=' => new \DateTime('now')])
+            ->order(['start_exception' => 'ASC'])
             ->all();
 
-        // Envia as duas listas de dados para o Template (View)
         $this->set(compact('availableRules', 'exceptions'));
     }
 
     /**
-     * View method
-     *
-     * @param string|null $id Availability id.
-     * @return \Cake\Http\Response|null|void Renders view
-     * @throws \Cake\Datasource\Exception\RecordNotFoundException When record not found.
+     * Action setWeekly: Define os horários de trabalho da semana.
      */
-    public function view($id = null)
+    public function setWeekly()
     {
-        $availability = $this->Availability->get($id, contain: []);
-        $this->set(compact('availability'));
-    }
+        $availableTable = $this->fetchTable('Available');
 
-    /**
-     * Add method
-     *
-     * @return \Cake\Http\Response|null|void Redirects on successful add, renders view otherwise.
-     */
-    public function add()
-    {
-        $availability = $this->Availability->newEmptyEntity();
         if ($this->request->is('post')) {
-            $availability = $this->Availability->patchEntity($availability, $this->request->getData());
-            if ($this->Availability->save($availability)) {
-                $this->Flash->success(__('The availability has been saved.'));
+            $availableTable->deleteAll(['1 = 1']);
+            $formData = $this->request->getData('days', []);
+            $error = false;
 
-                return $this->redirect(['action' => 'index']);
+            foreach ($formData as $dayData) {
+                if (isset($dayData['active']) && !empty($dayData['start_shift']) && !empty($dayData['end_shift'])) {
+                    $rule = $availableTable->newEntity($dayData);
+                    if (!$availableTable->save($rule)) {
+                        $error = true;
+                    }
+                }
             }
-            $this->Flash->error(__('The availability could not be saved. Please, try again.'));
+
+            if (!$error) {
+                $this->Flash->success('Horários de trabalho atualizados com sucesso.');
+                return $this->redirect(['action' => 'index']);
+            } else {
+                $this->Flash->error('Ocorreu um erro ao salvar os horários.');
+            }
         }
-        $this->set(compact('availability'));
+
+        $currentRules = $availableTable->find('all')->toArray();
+        $this->set(compact('currentRules'));
     }
 
     /**
-     * Edit method
-     *
-     * @param string|null $id Availability id.
-     * @return \Cake\Http\Response|null|void Redirects on successful edit, renders view otherwise.
-     * @throws \Cake\Datasource\Exception\RecordNotFoundException When record not found.
+     * Action addException: Adiciona um novo bloqueio na agenda.
      */
-    public function edit($id = null)
+    public function addException()
     {
-        $availability = $this->Availability->get($id, contain: []);
-        if ($this->request->is(['patch', 'post', 'put'])) {
-            $availability = $this->Availability->patchEntity($availability, $this->request->getData());
-            if ($this->Availability->save($availability)) {
-                $this->Flash->success(__('The availability has been saved.'));
+        $exceptionsTable = $this->fetchTable('Exceptions');
+        $exception = $exceptionsTable->newEmptyEntity();
 
+        if ($this->request->is('post')) {
+            $exception = $exceptionsTable->patchEntity($exception, $this->request->getData());
+            if ($exceptionsTable->save($exception)) {
+                $this->Flash->success('O período de bloqueio foi salvo com sucesso.');
                 return $this->redirect(['action' => 'index']);
             }
-            $this->Flash->error(__('The availability could not be saved. Please, try again.'));
-        }
-        $this->set(compact('availability'));
-    }
-
-    /**
-     * Delete method
-     *
-     * @param string|null $id Availability id.
-     * @return \Cake\Http\Response|null Redirects to index.
-     * @throws \Cake\Datasource\Exception\RecordNotFoundException When record not found.
-     */
-    public function delete($id = null)
-    {
-        $this->request->allowMethod(['post', 'delete']);
-        $availability = $this->Availability->get($id);
-        if ($this->Availability->delete($availability)) {
-            $this->Flash->success(__('The availability has been deleted.'));
-        } else {
-            $this->Flash->error(__('The availability could not be deleted. Please, try again.'));
+            $this->Flash->error('Não foi possível salvar o período de bloqueio.');
         }
 
-        return $this->redirect(['action' => 'index']);
+        $this->set(compact('exception'));
     }
 }

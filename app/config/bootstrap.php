@@ -80,6 +80,7 @@ require CAKE . 'functions.php';
  * - `config/app.php` for the default application configuration.
  * - `config/app_local.php` for environment specific configuration.
  */
+
 try {
     Configure::config('default', new PhpConfig());
     Configure::load('app', 'default', false);

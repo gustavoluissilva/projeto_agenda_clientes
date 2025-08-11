@@ -48,33 +48,39 @@ class ServicesTable extends Table
      * @param \Cake\Validation\Validator $validator Validator instance.
      * @return \Cake\Validation\Validator
      */
-    public function validationDefault(Validator $validator): Validator
-    {
-        $validator
-            ->scalar('name')
-            ->maxLength('name', 255)
-            ->requirePresence('name', 'create')
-            ->notEmptyString('name');
+    // Em src/Model/Table/ServicesTable.php
 
-        $validator
-            ->scalar('description')
-            ->requirePresence('description', 'create')
-            ->notEmptyString('description');
+// Em src/Model/Table/ServicesTable.php
 
-        $validator
-            ->integer('time_spend')
-            ->requirePresence('time_spend', 'create')
-            ->notEmptyString('time_spend');
+public function validationDefault(Validator $validator): Validator
+{
+    $validator
+        ->scalar('name')
+        ->maxLength('name', 255)
+        ->requirePresence('name', 'create')
+        ->notEmptyString('name', 'O nome do serviço não pode ser vazio.');
 
-        $validator
-            ->decimal('price')
-            ->requirePresence('price', 'create')
-            ->notEmptyString('price');
+    $validator
+        ->scalar('description')
+        ->requirePresence('description', 'create')
+        ->notEmptyString('description', 'A descrição não pode ser vazia.');
 
-        $validator
-            ->requirePresence('active', 'create')
-            ->notEmptyString('active');
+    $validator
+        // Adicionamos 'null' como segundo argumento para pular para a mensagem
+        ->integer('time_spend', null, 'A duração deve ser um número inteiro em minutos.')
+        ->requirePresence('time_spend', 'create')
+        ->notEmptyString('time_spend');
 
-        return $validator;
-    }
+    $validator
+        // Adicionamos 'null' como segundo argumento para pular para a mensagem
+        ->decimal('price', null, 'O preço deve ser um número (ex: 150.00).')
+        ->requirePresence('price', 'create')
+        ->notEmptyString('price');
+
+    $validator
+        ->boolean('active')
+        ->requirePresence('active', 'create');
+
+    return $validator;
+}
 }

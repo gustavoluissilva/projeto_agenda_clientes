@@ -2,7 +2,7 @@
 /**
  * @var \App\View\AppView $this
  * @var iterable<\App\Model\Entity\Available> $availableRules
- * @var iterable<\App\Model\Entity\Exception> $exceptions
+ * @var iterable<\App\Model\Entity\BlockedDate> $blockedDates // <-- CORRIGIDO AQUI
  */
 
 // Um array para traduzir o número do dia da semana para texto
@@ -16,7 +16,7 @@ $weekDays = [
 
 <div class="availability-index">
     <?= $this->Html->link('Definir Horário Semanal', ['action' => 'setWeekly'], ['class' => 'button']) ?>
-    <?= $this->Html->link('Adicionar Bloqueio/Exceção', ['action' => 'addException'], ['class' => 'button']) ?>
+    <?= $this->Html->link('Adicionar Bloqueio', ['action' => 'addBlockedDate'], ['class' => 'button']) ?>
 
     <hr>
 
@@ -47,7 +47,7 @@ $weekDays = [
     <hr>
 
     <h3>Bloqueios Agendados (Férias, Feriados, etc.)</h3>
-    <?php if (!$exceptions->isEmpty()): ?>
+    <?php if (!$blockedDates->isEmpty()): ?>
         <table>
             <thead>
                 <tr>
@@ -57,11 +57,11 @@ $weekDays = [
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($exceptions as $exception): ?>
+                <?php foreach ($blockedDates as $blockedDate): ?>
                 <tr>
-                    <td><?= h($exception->reason) ?></td>
-                    <td><?= $exception->start_exception->format('d/m/Y H:i') ?></td>
-                    <td><?= $exception->end_exception->format('d/m/Y H:i') ?></td>
+                    <td><?= h($blockedDate->reason) ?></td>
+                    <td><?= $blockedDate->start_date->format('d/m/Y H:i') ?></td>
+                    <td><?= $blockedDate->end_date->format('d/m/Y H:i') ?></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>

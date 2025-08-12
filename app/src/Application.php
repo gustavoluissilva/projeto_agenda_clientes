@@ -1,23 +1,7 @@
 <?php
-
 declare(strict_types=1);
 
-/**
- * CakePHP(tm) : Rapid Development Framework (https://cakephp.org)
- * Copyright (c) Cake Software Foundation, Inc. (https://cakefoundation.org)
- *
- * Licensed under The MIT License
- * For full copyright and license information, please see the LICENSE.txt
- * Redistributions of files must retain the above copyright notice.
- *
- * @copyright Copyright (c) Cake Software Foundation, Inc. (https://cakefoundation.org)
- * @link      https://cakephp.org CakePHP(tm) Project
- * @since     3.3.0
- * @license   https://opensource.org/licenses/mit-license.php MIT License
- */
-
 namespace App;
-
 
 use Cake\Core\Configure;
 use Cake\Core\ContainerInterface;
@@ -30,80 +14,67 @@ use Cake\Http\MiddlewareQueue;
 use Cake\ORM\Locator\TableLocator;
 use Cake\Routing\Middleware\AssetMiddleware;
 use Cake\Routing\Middleware\RoutingMiddleware;
-use Authentication\Middleware\AuthenticationMiddleware;
-use Authorization\Middleware\AuthorizationMiddleware;
+use Cake\Routing\Router;
+
+// Imports de Segurança
 use Authentication\AuthenticationService;
 use Authentication\AuthenticationServiceInterface;
 use Authentication\AuthenticationServiceProviderInterface;
+use Authentication\Middleware\AuthenticationMiddleware;
 use Authorization\AuthorizationService;
 use Authorization\AuthorizationServiceInterface;
 use Authorization\AuthorizationServiceProviderInterface;
-use Authorization\Policy\MapRbac;
+use Authorization\Middleware\AuthorizationMiddleware;
+use Authorization\Policy\OrmResolver;
 use Psr\Http\Message\ServerRequestInterface;
-use Cake\Routing\Router;
+
 
 /**
  * Application setup class.
- *
- * This defines the bootstrapping logic and middleware layers you
- * want to use in your application.
- *
- * @extends \Cake\Http\BaseApplication<\App\Application>
  */
 class Application extends BaseApplication implements AuthenticationServiceProviderInterface, AuthorizationServiceProviderInterface
 {
     /**
      * Load all the application configuration and bootstrap logic.
-     *
-     * @return void
      */
-    public function bootstrap(): void
-    {
-        // Call parent to load bootstrap from files.
-        parent::bootstrap();
+   public function bootstrap(): void
+{
+    // Chama o bootstrap da classe pai para carregar as configurações padrão
+    parent::bootstrap();
 
-        if (PHP_SAPI !== 'cli') {
-            // The bake plugin requires fallback table classes to work properly
-            FactoryLocator::add('Table', (new TableLocator())->allowFallbackClass(false));
-        }
-        $this->addPlugin('Authentication'); // Adicione esta linha
-        $this->addPlugin('Authorization'); // Adicione esta linha
-    }
-
+    // Carrega os plugins de segurança que precisamos para a aplicação
+    $this->addPlugin('Authentication');
+    $this->addPlugin('Authorization');
+}
     /**
      * Setup the middleware queue your application will use.
-     *
-     * @param \Cake\Http\MiddlewareQueue $middlewareQueue The middleware queue to setup.
-     * @return \Cake\Http\MiddlewareQueue The updated middleware queue.
      */
     public function middleware(MiddlewareQueue $middlewareQueue): MiddlewareQueue
     {
         $middlewareQueue
-            // Middleware de Erros: Deve ser o primeiro para pegar qualquer erro.
+            // Pega erros e mostra uma página de erro
             ->add(new ErrorHandlerMiddleware(Configure::read('Error'), $this))
 
-            // Middleware de Assets: Lida com CSS, JS, e imagens.
+            // Lida com arquivos de assets (CSS, JS, imagens)
             ->add(new AssetMiddleware([
                 'cacheTime' => Configure::read('Asset.cacheTime'),
             ]))
 
-            // Middleware de Rotas: Descobre qual controller/action executar a partir da URL.
+            // Lida com o roteamento de URLs para Controllers/Actions
             ->add(new RoutingMiddleware($this))
 
-            // Middleware de Análise de Corpo: Prepara os dados de formulários.
+            // Prepara os dados de formulários (POST)
             ->add(new BodyParserMiddleware())
 
-            // Middleware de Proteção CSRF: Protege contra ataques a formulários.
+            // Proteção contra ataques CSRF
             ->add(new CsrfProtectionMiddleware([
                 'httponly' => true,
             ]));
-
-        // >>> ADICIONE A AUTENTICAÇÃO AQUI <<<
-        // Middleware de Autenticação: Verifica QUEM é o usuário (se está logado).
+        
+        // Adiciona a verificação de AUTENTICAÇÃO (quem é o usuário) à fila
         $middlewareQueue->add(new AuthenticationMiddleware($this));
-
-        // >>> E A AUTORIZAÇÃO LOGO DEPOIS <<<
-        // Middleware de Autorização: Verifica O QUE o usuário logado PODE FAZER.
+        
+        // Adiciona a verificação de AUTORIZAÇÃO (o que o usuário pode fazer) à fila
         $middlewareQueue->add(new AuthorizationMiddleware($this, [
             'unauthorizedHandler' => [
                 'className' => 'Authorization.Redirect',
@@ -118,14 +89,18 @@ class Application extends BaseApplication implements AuthenticationServiceProvid
 
         return $middlewareQueue;
     }
-    // Método que diz COMO autenticar um usuário
-    // Em src/Application.php
 
-
+    /**
+     * Configura o serviço de AUTENTICAÇÃO
+     */
     public function getAuthenticationService(ServerRequestInterface $request): AuthenticationServiceInterface
     {
         $service = new AuthenticationService();
         $service->setConfig([
+
+            'log' => true,
+
+
             'unauthenticatedRedirect' => Router::url(['controller' => 'Users', 'action' => 'login']),
             'queryParam' => 'redirect',
         ]);
@@ -135,46 +110,41 @@ class Application extends BaseApplication implements AuthenticationServiceProvid
             'password' => 'password',
         ];
 
-        // Carrega os autenticadores
+        // Define os métodos de login: pela sessão (se já logado) ou por formulário.
         $service->loadAuthenticator('Authentication.Session');
         $service->loadAuthenticator('Authentication.Form', [
             'fields' => $fields,
             'loginUrl' => Router::url(['controller' => 'Users', 'action' => 'login']),
-            // AQUI ESTÁ A CORREÇÃO FINAL E MAIS IMPORTANTE
-            'userModel' => 'Users',
+            'userModel' => 'Users', // Configuração explícita
         ]);
 
-        // Carrega o identificador
+        // Define como encontrar o usuário no banco de dados.
         $service->loadIdentifier('Authentication.Password', [
             'fields' => $fields,
             'resolver' => [
                 'className' => 'Authentication.Orm',
-                'userModel' => 'Users',
+                'userModel' => 'Users', // Configuração explícita
             ],
         ]);
 
         return $service;
     }
-
-    // Método que diz O QUE cada tipo de usuário pode fazer
-    // Em src/Application.php
-
-    // SUBSTITUA SEU MÉTODO getAuthorizationService POR ESTE
+    
+    /**
+     * Configura o serviço de AUTORIZAÇÃO
+     */
     public function getAuthorizationService(ServerRequestInterface $request): AuthorizationServiceInterface
     {
-        // Em vez de MapRbac, agora usamos um Resolver
-        $resolver = new \Authorization\Policy\OrmResolver();
+        // Usa o OrmResolver para encontrar os arquivos de Policy automaticamente
+        $resolver = new OrmResolver();
 
-        // A lógica continua a mesma, mas é encapsulada no serviço
         return new AuthorizationService($resolver);
     }
 
     /**
      * Register application container services.
-     *
-     * @param \Cake\Core\ContainerInterface $container The Container to update.
-     * @return void
-     * @link https://book.cakephp.org/5/en/development/dependency-injection.html#dependency-injection
      */
-    public function services(ContainerInterface $container): void {}
+    public function services(ContainerInterface $container): void
+    {
+    }
 }

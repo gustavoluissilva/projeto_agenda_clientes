@@ -21,7 +21,6 @@
                     echo $this->Form->control('email');
                     echo $this->Form->control('password');
                     echo $this->Form->control('phone');
-                    echo $this->Form->control('date_register');
                 ?>
             </fieldset>
             <?= $this->Form->button(__('Submit')) ?>

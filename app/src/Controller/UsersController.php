@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Controller;
@@ -26,32 +27,28 @@ class UsersController extends AppController
     /**
      * Action de Login
      */
+    // Em src/Controller/UsersController.php
+
+    // Em src/Controller/UsersController.php
+
     public function login()
     {
-        // Pula a verificação de permissão, pois qualquer um pode ver a tela de login.
         $this->Authorization->skipAuthorization();
-
         $result = $this->Authentication->getResult();
+
         if ($result->isValid()) {
-            // Se o login for válido, redireciona o usuário.
             $user = $this->Authentication->getIdentity();
-            
-            // LÓGICA DE REDIRECIONAMENTO MELHORADA:
-            // Se for admin, vai para o painel de disponibilidade.
-            // Se for cliente, vai para o seu próprio dashboard.
             $redirectTarget = ($user->user_type === 'admin')
                 ? ['controller' => 'Availability', 'action' => 'index']
                 : ['controller' => 'Users', 'action' => 'dashboard'];
 
-            $redirect = $this->request->getQuery('redirect', $redirectTarget);
-            
-            return $this->redirect($redirect);
+            return $this->redirect($this->request->getQuery('redirect', $redirectTarget));
         }
+
         if ($this->request->is('post') && !$result->isValid()) {
             $this->Flash->error('Usuário ou senha inválidos');
         }
     }
-
     /**
      * Action de Logout
      */
@@ -64,28 +61,32 @@ class UsersController extends AppController
         }
         return $this->redirect(['controller' => 'Users', 'action' => 'login']);
     }
-    
+
     /**
      * Action de Registro (Add)
      * Acessível publicamente para novos clientes.
      */
     public function add()
     {
-        // Pula a verificação de permissão para que novos usuários possam se registrar.
         $this->Authorization->skipAuthorization();
 
         $user = $this->Users->newEmptyEntity();
         if ($this->request->is('post')) {
             $user = $this->Users->patchEntity($user, $this->request->getData());
-            
-            // ALTERAÇÃO DE SEGURANÇA: Garante que todo novo registro seja do tipo 'cliente'.
+
+            // Lógica de segurança para o tipo de usuário
             $user->user_type = 'cliente';
 
+            // **** LINHA ADICIONADA AQUI ****
+            // Define a data de registro para a data e hora atuais
+            $user->date_register = new \DateTime('now');
+
             if ($this->Users->save($user)) {
-                $this->Flash->success('Sua conta foi criada com sucesso. Por favor, faça o login.');
-                return $this->redirect(['action' => 'login']); // Redireciona para o login após o sucesso.
+                $this->Flash->success(__('Sua conta foi criada com sucesso. Por favor, faça o login.'));
+
+                return $this->redirect(['action' => 'login']);
             }
-            $this->Flash->error('Não foi possível criar sua conta. Por favor, tente novamente.');
+            $this->Flash->error(__('Não foi possível criar sua conta. Por favor, tente novamente.'));
         }
         $this->set(compact('user'));
     }
@@ -95,10 +96,23 @@ class UsersController extends AppController
      */
     public function dashboard()
     {
-        // Garante que o usuário logado só pode ver o seu próprio dashboard.
-        $this->Authorization->authorize($this->Authentication->getIdentity()->getOriginalData());
+        // Pega a identidade do usuário UMA VEZ e armazena em uma variável
+        $user = $this->Authentication->getIdentity();
 
-        $userId = $this->Authentication->getIdentity()->id;
+        // ADICIONADO: Se não houver usuário logado, redireciona para o login
+        // Isso previne o erro "Call to a member function ... on null"
+        if (!$user) {
+            $this->Flash->error('Você precisa estar logado para acessar esta página.');
+            return $this->redirect(['action' => 'login']);
+        }
+
+        // Agora podemos usar a variável $user com segurança para autorização
+        // Garante que o usuário logado só pode ver o seu próprio dashboard.
+        $this->Authorization->authorize($user->getOriginalData());
+
+        // E também para pegar o ID, sem chamar a função novamente
+        $userId = $user->id;
+
         $schedules = $this->fetchTable('Schedule')->find()
             ->contain(['Services'])
             ->where([
@@ -121,7 +135,7 @@ class UsersController extends AppController
     {
         // Adicionaremos a verificação de permissão para admin aqui
         // $this->Authorization->authorize($this->Authentication->getIdentity()->getOriginalData(), 'admin');
-        
+
         $query = $this->Users->find();
         $users = $this->paginate($query);
         $this->set(compact('users'));
@@ -133,7 +147,7 @@ class UsersController extends AppController
     public function view($id = null)
     {
         // Adicionaremos a verificação de permissão para admin aqui
-        
+
         $user = $this->Users->get($id, contain: []);
         $this->set(compact('user'));
     }

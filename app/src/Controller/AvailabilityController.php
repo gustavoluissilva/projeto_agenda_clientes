@@ -29,10 +29,15 @@ class AvailabilityController extends AppController
     public function beforeFilter(\Cake\Event\EventInterface $event)
     {
         parent::beforeFilter($event);
-
         $user = $this->Authentication->getIdentity();
 
-        // Passamos a entidade User original em vez do objeto Identity
+        // VERIFICAÇÃO DE SEGURANÇA ADICIONADA
+        // Se não há usuário logado, não há o que autorizar.
+        if (!$user) {
+            return;
+        }
+
+        // A autorização só acontece se tivermos um usuário.
         $this->Authorization->authorize($user->getOriginalData(), 'admin');
     }
 
@@ -42,12 +47,15 @@ class AvailabilityController extends AppController
     public function index()
     {
         $availableRules = $this->fetchTable('Available')->find('all')->all();
-        $exceptions = $this->fetchTable('Exceptions')->find()
-            ->where(['end_exception >=' => new \DateTime('now')])
-            ->order(['start_exception' => 'ASC'])
+
+        // ALTERADO AQUI: Agora busca na tabela BlockedDates
+        $blockedDates = $this->fetchTable('BlockedDates')->find()
+            ->where(['end_date >=' => new \DateTime('now')]) // E usa a coluna end_date
+            ->order(['start_date' => 'ASC'])
             ->all();
 
-        $this->set(compact('availableRules', 'exceptions'));
+        // Altera o nome da variável enviada para o template
+        $this->set(compact('availableRules', 'blockedDates'));
     }
 
     /**
@@ -86,20 +94,22 @@ class AvailabilityController extends AppController
     /**
      * Action addException: Adiciona um novo bloqueio na agenda.
      */
-    public function addException()
+    // Renomeado de addException para addBlockedDate
+    public function addBlockedDate()
     {
-        $exceptionsTable = $this->fetchTable('Exceptions');
-        $exception = $exceptionsTable->newEmptyEntity();
+        // O código aqui dentro já está correto usando BlockedDates
+        $blockedDatesTable = $this->fetchTable('BlockedDates');
+        $blockedDate = $blockedDatesTable->newEmptyEntity();
 
         if ($this->request->is('post')) {
-            $exception = $exceptionsTable->patchEntity($exception, $this->request->getData());
-            if ($exceptionsTable->save($exception)) {
+            $blockedDate = $blockedDatesTable->patchEntity($blockedDate, $this->request->getData());
+            if ($blockedDatesTable->save($blockedDate)) {
                 $this->Flash->success('O período de bloqueio foi salvo com sucesso.');
                 return $this->redirect(['action' => 'index']);
             }
             $this->Flash->error('Não foi possível salvar o período de bloqueio.');
         }
 
-        $this->set(compact('exception'));
+        $this->set(compact('blockedDate'));
     }
 }

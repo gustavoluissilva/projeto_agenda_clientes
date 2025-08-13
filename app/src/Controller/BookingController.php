@@ -67,7 +67,7 @@ class BookingController extends AppController
                         // **** E AQUI ****
                         // Passa a variável correta para a função de checagem
                         if ($this->isSlotAvailable($slotStart, $slotEnd, $bookedSchedules, $blockedDates)) {
-                            $availableSlots[$date->format('Y-m-d')][] = $slotStart;
+                            $availableSlots[$date->format('Y-m-d')][] = clone $slotStart;
                         }
                     }
                 }
@@ -88,7 +88,7 @@ class BookingController extends AppController
         $this->Authorization->authorize($user->getOriginalData());
 
         $service = $this->fetchTable('Services')->get($service_id);
-        $scheduleTime = new \DateTime($datetime);
+        $scheduleTime = \DateTime::createFromFormat('Y-m-d-H-i-s', $datetime);
 
         $this->set(compact('service', 'scheduleTime'));
     }

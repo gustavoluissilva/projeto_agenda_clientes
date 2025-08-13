@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+// Importa a classe de criptografia de senha para uso no login manual
+use Authentication\PasswordHasher\DefaultPasswordHasher;
+use App\Mailer\UserMailer;
+
 /**
  * Users Controller
  *
@@ -14,28 +18,25 @@ namespace App\Controller;
 class UsersController extends AppController
 {
     /**
-     * beforeFilter: Executado antes de qualquer action.
-     * Usamos para definir quais páginas são públicas.
+     * beforeFilter: É executado antes de qualquer action.
+     * Define quais páginas podem ser vistas por usuários não logados.
      */
     public function beforeFilter(\Cake\Event\EventInterface $event)
     {
         parent::beforeFilter($event);
-        // Permite que usuários NÃO LOGADOS acessem a página de login e a de registro.
-        $this->Authentication->addUnauthenticatedActions(['login', 'add']);
+        // Permite o acesso público às actions de 'login' e 'add' (registro).
+        $this->Authentication->addUnauthenticatedActions(['login', 'add', 'forgotPassword', 'resetPassword']);
     }
 
     /**
-     * Action de Login
+     * Action de Login.
      */
-    // Em src/Controller/UsersController.php
-
-    // Em src/Controller/UsersController.php
-
     public function login()
     {
-        $this->Authorization->skipAuthorization();
-        $result = $this->Authentication->getResult();
+        $this->Authorization->skipAuthorization(); // Qualquer um pode ver a tela de login.
 
+        // Primeiro, verifica se o usuário já está logado de uma sessão anterior.
+        $result = $this->Authentication->getResult();
         if ($result->isValid()) {
             $user = $this->Authentication->getIdentity();
             $redirectTarget = ($user->user_type === 'admin')
@@ -45,12 +46,31 @@ class UsersController extends AppController
             return $this->redirect($this->request->getQuery('redirect', $redirectTarget));
         }
 
-        if ($this->request->is('post') && !$result->isValid()) {
+        // Se o formulário de login foi enviado (requisição POST).
+        if ($this->request->is('post')) {
+            $email = $this->request->getData('email');
+            $password = $this->request->getData('password');
+
+            // Lógica de autenticação manual que confirmamos que funciona.
+            $user = $this->Users->findByEmail($email)->first();
+
+            if ($user && (new DefaultPasswordHasher())->check($password, $user->password)) {
+                // Se o usuário foi encontrado e a senha está correta...
+                $this->Authentication->setIdentity($user); // ...coloca o usuário na sessão.
+
+                $redirectTarget = ($user->user_type === 'admin')
+                    ? ['controller' => 'Availability', 'action' => 'index']
+                    : ['controller' => 'Users', 'action' => 'dashboard'];
+
+                return $this->redirect($redirectTarget);
+            }
+
             $this->Flash->error('Usuário ou senha inválidos');
         }
     }
+
     /**
-     * Action de Logout
+     * Action de Logout.
      */
     public function logout()
     {
@@ -63,56 +83,40 @@ class UsersController extends AppController
     }
 
     /**
-     * Action de Registro (Add)
-     * Acessível publicamente para novos clientes.
+     * Action de Registro de novos usuários (clientes).
      */
     public function add()
     {
-        $this->Authorization->skipAuthorization();
+        $this->Authorization->skipAuthorization(); // Permite o registro público.
 
         $user = $this->Users->newEmptyEntity();
         if ($this->request->is('post')) {
             $user = $this->Users->patchEntity($user, $this->request->getData());
 
-            // Lógica de segurança para o tipo de usuário
-            $user->user_type = 'cliente';
-
-            // **** LINHA ADICIONADA AQUI ****
-            // Define a data de registro para a data e hora atuais
-            $user->date_register = new \DateTime('now');
+            $user->user_type = 'cliente'; // Força o tipo de usuário como 'cliente'.
+            $user->date_register = new \DateTime('now'); // Define a data de registro.
 
             if ($this->Users->save($user)) {
-                $this->Flash->success(__('Sua conta foi criada com sucesso. Por favor, faça o login.'));
-
+                $this->Flash->success('Sua conta foi criada com sucesso. Por favor, faça o login.');
                 return $this->redirect(['action' => 'login']);
             }
-            $this->Flash->error(__('Não foi possível criar sua conta. Por favor, tente novamente.'));
+            $this->Flash->error('Não foi possível criar sua conta. Por favor, tente novamente.');
         }
         $this->set(compact('user'));
     }
 
     /**
-     * Dashboard do Cliente: Mostra os agendamentos do cliente logado.
+     * Dashboard do Cliente.
      */
     public function dashboard()
     {
-        // Pega a identidade do usuário UMA VEZ e armazena em uma variável
         $user = $this->Authentication->getIdentity();
-
-        // ADICIONADO: Se não houver usuário logado, redireciona para o login
-        // Isso previne o erro "Call to a member function ... on null"
         if (!$user) {
-            $this->Flash->error('Você precisa estar logado para acessar esta página.');
             return $this->redirect(['action' => 'login']);
         }
-
-        // Agora podemos usar a variável $user com segurança para autorização
-        // Garante que o usuário logado só pode ver o seu próprio dashboard.
         $this->Authorization->authorize($user->getOriginalData());
 
-        // E também para pegar o ID, sem chamar a função novamente
         $userId = $user->id;
-
         $schedules = $this->fetchTable('Schedule')->find()
             ->contain(['Services'])
             ->where([
@@ -125,16 +129,14 @@ class UsersController extends AppController
         $this->set(compact('schedules'));
     }
 
-    // --- ACTIONS ABAIXO SÃO PARA GERENCIAMENTO DO ADMIN ---
-    // Elas não foram totalmente implementadas, mas a estrutura está aqui.
+    // --- MÉTODOS DE GERENCIAMENTO (CRUD) PARA ADMINS ---
 
     /**
-     * Index: Lista todos os usuários (apenas para admin).
+     * Index method: Lista todos os usuários. Requer ser admin.
      */
     public function index()
     {
-        // Adicionaremos a verificação de permissão para admin aqui
-        // $this->Authorization->authorize($this->Authentication->getIdentity()->getOriginalData(), 'admin');
+        $this->Authorization->authorize($this->Authentication->getIdentity()->getOriginalData(), 'admin');
 
         $query = $this->Users->find();
         $users = $this->paginate($query);
@@ -142,22 +144,22 @@ class UsersController extends AppController
     }
 
     /**
-     * View: Vê o detalhe de um usuário (apenas para admin).
+     * View method: Vê detalhes de um usuário. Requer ser admin.
      */
     public function view($id = null)
     {
-        // Adicionaremos a verificação de permissão para admin aqui
+        $this->Authorization->authorize($this->Authentication->getIdentity()->getOriginalData(), 'admin');
 
         $user = $this->Users->get($id, contain: []);
         $this->set(compact('user'));
     }
 
     /**
-     * Edit: Edita um usuário (apenas para admin).
+     * Edit method: Edita um usuário. Requer ser admin.
      */
     public function edit($id = null)
     {
-        // Adicionaremos a verificação de permissão para admin aqui
+        $this->Authorization->authorize($this->Authentication->getIdentity()->getOriginalData(), 'admin');
 
         $user = $this->Users->get($id, contain: []);
         if ($this->request->is(['patch', 'post', 'put'])) {
@@ -172,11 +174,11 @@ class UsersController extends AppController
     }
 
     /**
-     * Delete: Deleta um usuário (apenas para admin).
+     * Delete method: Deleta um usuário. Requer ser admin.
      */
     public function delete($id = null)
     {
-        // Adicionaremos a verificação de permissão para admin aqui
+        $this->Authorization->authorize($this->Authentication->getIdentity()->getOriginalData(), 'admin');
 
         $this->request->allowMethod(['post', 'delete']);
         $user = $this->Users->get($id);
@@ -187,5 +189,67 @@ class UsersController extends AppController
         }
 
         return $this->redirect(['action' => 'index']);
+    }
+
+    public function forgotPassword()
+    {
+        // Permite que qualquer um acesse esta página
+        $this->Authorization->skipAuthorization();
+
+        // Verifica se o formulário foi enviado (requisição do tipo POST)
+        if ($this->request->is('post')) {
+            $email = $this->request->getData('email');
+            $user = $this->Users->findByEmail($email)->first();
+
+            // Só executa a lógica se encontrar um usuário com o email fornecido
+            if ($user) {
+                $token = \Cake\Utility\Security::randomString(64);
+                $user->password_reset_token = $token;
+                $user->token_expires = new \DateTime('+1 hour');
+
+                // Se conseguir salvar o token no banco de dados...
+                if ($this->Users->save($user)) {
+                    // ...tenta enviar o email.
+                    (new \App\Mailer\UserMailer())->send('passwordReset', [$user]);
+                }
+            }
+
+            // IMPORTANTE: Esta mensagem e o redirect acontecem DEPOIS da lógica acima,
+            // independentemente de o email ter sido encontrado ou não.
+            // Isso é uma prática de segurança para não confirmar se um email existe no sistema.
+            $this->Flash->success('Se o seu email estiver em nossa base de dados, um link de redefinição foi enviado.');
+
+            return $this->redirect(['action' => 'login']);
+        }
+    }
+    /**
+     * Action "Redefinir Senha".
+     * Verifica o token e permite a alteração da senha.
+     */
+    public function resetPassword($token = null)
+    {
+        $this->Authorization->skipAuthorization(); // Página pública
+
+        if ($this->request->is('post')) {
+            // Busca o usuário pelo token que ainda está na URL
+            $user = $this->Users->findByPasswordResetToken($this->request->getData('token'))->first();
+            if ($user && $user->token_expires > new \DateTime('now')) {
+                $user = $this->Users->patchEntity($user, $this->request->getData());
+
+                // Limpa o token para que não possa ser usado novamente
+                $user->password_reset_token = null;
+                $user->token_expires = null;
+
+                if ($this->Users->save($user)) {
+                    $this->Flash->success('Sua senha foi alterada com sucesso. Você já pode fazer o login.');
+                    return $this->redirect(['action' => 'login']);
+                }
+            }
+            $this->Flash->error('O link de redefinição é inválido ou expirou. Por favor, tente novamente.');
+            return $this->redirect(['action' => 'forgotPassword']);
+        }
+
+        // Se a requisição for GET, apenas passa o token para a view
+        $this->set(compact('token'));
     }
 }

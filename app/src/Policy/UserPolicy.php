@@ -16,7 +16,6 @@ class UserPolicy
      */
     public function canAdmin(IdentityInterface $identity): bool
     {
-        // Acessamos 'user_type' diretamente como uma propriedade.
         return $identity->user_type === 'admin';
     }
 
@@ -25,8 +24,24 @@ class UserPolicy
      */
     public function canDashboard(IdentityInterface $identity, User $user): bool
     {
-        // Acessamos o ID do usuário logado diretamente com '->id'.
-        // Comparamos com o ID do recurso ($user) que está sendo verificado.
         return $identity->id === $user->id;
+    }
+
+    /**
+     * Verifica se um usuário pode acessar a tela de confirmação.
+     */
+    public function canConfirm(IdentityInterface $identity, User $user): bool
+    {
+        // Qualquer usuário logado pode confirmar um agendamento.
+        return true;
+    }
+
+    /**
+     * Verifica se um usuário pode salvar um agendamento.
+     */
+    public function canSave(IdentityInterface $identity, User $user): bool
+    {
+        // Qualquer usuário logado pode salvar um agendamento.
+        return true;
     }
 }
